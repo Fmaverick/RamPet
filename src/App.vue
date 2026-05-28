@@ -3,11 +3,13 @@ import { computed } from 'vue'
 import RamPet from './components/RamPet.vue'
 
 const isDesktop = computed(() => new URLSearchParams(window.location.search).get('desktop') === '1')
+const isCodexMode = computed(() => new URLSearchParams(window.location.search).get('codex') === '1')
+const eyeReminderEnabled = computed(() => new URLSearchParams(window.location.search).get('reminder') !== '0')
 </script>
 
 <template>
   <main v-if="isDesktop" class="desktop-shell" aria-label="Ram desktop pet">
-    <RamPet desktop />
+    <RamPet desktop :codex-mode="isCodexMode" :eye-reminder-enabled="eyeReminderEnabled" />
   </main>
 
   <main v-else class="app-shell">

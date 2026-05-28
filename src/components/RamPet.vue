@@ -22,11 +22,14 @@ import {
   isPersistentCodexStatus,
   type CodexPetStatus,
   type CodexStatusAction,
+  type ReminderSettingsAction,
   type PetAction,
 } from '../lib/codex-status'
 
 const props = defineProps<{
   desktop?: boolean
+  codexMode?: boolean
+  eyeReminderEnabled?: boolean
 }>()
 
 const mood = ref<PetMood>('idle')
@@ -44,7 +47,8 @@ const transientUntil = ref(0)
 const clickMoodPool = ref<PetMood[]>([])
 const lastClickMood = ref<PetMood | null>(null)
 const isStudyAltFrame = ref(false)
-const speechText = ref('')
+const eyeReminderVisible = ref(false)
+const eyeReminderEnabled = ref(props.eyeReminderEnabled ?? true)
 const codexStatus = ref<CodexPetStatus>('idle')
 const codexMessage = ref('Codex 已就绪')
 const codexDetail = ref('')
@@ -56,17 +60,13 @@ let walkFrameTimer = 0
 let walkStepTimer = 0
 let walkEndTimer = 0
 let studySwapTimer = 0
-let speechTimer = 0
-let speechHideTimer = 0
+let eyeReminderTimer = 0
+let eyeReminderHideTimer = 0
 let unsubscribePetAction: (() => void) | undefined
 
-const SPEECH_ALLOWED_MOODS = ['affection', 'happy', 'play', 'excited'] as const satisfies readonly PetMood[]
-const CARE_MESSAGES = [
-  '坐太久啦，起来走走吧。',
-  '活动一下肩颈吧。',
-  '喝口水，休息一下眼睛。',
-  '站起来陪我动一动？',
-] as const
+const EYE_REMINDER_EVERY_MS = 20 * 60 * 1000
+const EYE_REMINDER_VISIBLE_MS = 8000
+const EYE_REMINDER_MESSAGE = 'Bibo~ 主人，看看远处 20 秒吧，拉姆陪你。'
 
 const assetPath = computed(() => {
   if (!hasAsset.value) return ''
@@ -79,6 +79,8 @@ const assetPath = computed(() => {
 const codexStatusLabel = computed(() => CODEX_STATUS_LABELS[codexStatus.value])
 
 const codexPreviewVisible = computed(() => props.desktop && codexStatus.value !== 'idle')
+
+const eyeReminderActive = computed(() => props.desktop && props.codexMode && eyeReminderVisible.value)
 
 const codexPreviewLines = computed(() =>
   codexDetail.value
@@ -165,24 +167,46 @@ function onPetHover() {
   markInteraction()
 }
 
-function showSpeechBubble() {
-  if (isCodexDrivingMood()) return
-  if (isDragging.value || mood.value === 'sleep' || mood.value === 'walk') return
-  if (!SPEECH_ALLOWED_MOODS.includes(mood.value as (typeof SPEECH_ALLOWED_MOODS)[number])) {
-    const speechMood = SPEECH_ALLOWED_MOODS[Math.floor(Math.random() * SPEECH_ALLOWED_MOODS.length)]
-    setMood(speechMood, 7000)
+function clearEyeReminderHideTimer() {
+  if (!eyeReminderHideTimer) return
+  window.clearTimeout(eyeReminderHideTimer)
+  eyeReminderHideTimer = 0
+}
+
+function hideEyeReminder() {
+  eyeReminderVisible.value = false
+  clearEyeReminderHideTimer()
+}
+
+function stopEyeReminderTimer() {
+  if (eyeReminderTimer) {
+    window.clearInterval(eyeReminderTimer)
+    eyeReminderTimer = 0
   }
-  const nextMessage = CARE_MESSAGES[Math.floor(Math.random() * CARE_MESSAGES.length)]
-  speechText.value = nextMessage
-  if (speechHideTimer) window.clearTimeout(speechHideTimer)
-  speechHideTimer = window.setTimeout(() => {
-    const shouldWalkAfterSpeech = speechText.value === '站起来陪我动一动？'
-    speechText.value = ''
-    speechHideTimer = 0
-    if (shouldWalkAfterSpeech && !isDragging.value && mood.value !== 'sleep' && mood.value !== 'walk') {
-      triggerWalkAction()
-    }
-  }, 7000)
+  hideEyeReminder()
+}
+
+function showEyeReminder() {
+  if (!props.desktop || !props.codexMode || !eyeReminderEnabled.value) return
+  if (isDragging.value || mood.value === 'sleep' || mood.value === 'walk') return
+  eyeReminderVisible.value = true
+  clearEyeReminderHideTimer()
+  eyeReminderHideTimer = window.setTimeout(() => {
+    eyeReminderVisible.value = false
+    eyeReminderHideTimer = 0
+  }, EYE_REMINDER_VISIBLE_MS)
+}
+
+function startEyeReminderTimer() {
+  stopEyeReminderTimer()
+  if (!props.desktop || !props.codexMode || !eyeReminderEnabled.value) return
+  eyeReminderTimer = window.setInterval(showEyeReminder, EYE_REMINDER_EVERY_MS)
+}
+
+function handleReminderSettings(action: ReminderSettingsAction) {
+  eyeReminderEnabled.value = action.eyeReminderEnabled
+  if (eyeReminderEnabled.value) startEyeReminderTimer()
+  else stopEyeReminderTimer()
 }
 
 function beginDrag(event: PointerEvent) {
@@ -387,7 +411,6 @@ function handleCodexStatus(action: CodexStatusAction) {
   if (action.status === 'idle') {
     transientUntil.value = 0
     mood.value = 'idle'
-    speechText.value = ''
     codexDetail.value = ''
     return
   }
@@ -395,12 +418,15 @@ function handleCodexStatus(action: CodexStatusAction) {
   clearWalkTimers()
   stopWalkFrameTimer()
   setMood(action.mood, isPersistentCodexStatus(action.status) ? 60 * 60 * 1000 : 6000)
-  speechText.value = ''
 }
 
 function handlePetAction(action: PetAction) {
   if (action.type === 'codex-status') {
     handleCodexStatus(action)
+    return
+  }
+  if (action.type === 'reminder-settings') {
+    handleReminderSettings(action)
     return
   }
   if (action.type !== 'mood') return
@@ -414,19 +440,14 @@ function handlePetAction(action: PetAction) {
 
 watch(mood, (nextMood) => {
   if (nextMood !== 'sleep' && nextMood !== 'walk') return
-  speechText.value = ''
-  if (speechHideTimer) {
-    window.clearTimeout(speechHideTimer)
-    speechHideTimer = 0
-  }
+  hideEyeReminder()
 })
 
 onMounted(() => {
   sleepTimer = window.setInterval(checkSleep, 1000)
   walkTimer = window.setInterval(moveRandomly, WALK_EVERY_MS)
   moodTimer = window.setInterval(chooseAmbientMood, AMBIENT_EVERY_MS)
-  speechHideTimer = window.setTimeout(showSpeechBubble, 3000)
-  speechTimer = window.setInterval(showSpeechBubble, 60000)
+  startEyeReminderTimer()
 
   unsubscribePetAction = window.ramPetWindow?.onAction(handlePetAction)
 })
@@ -435,8 +456,7 @@ onUnmounted(() => {
   window.clearInterval(sleepTimer)
   window.clearInterval(walkTimer)
   window.clearInterval(moodTimer)
-  window.clearInterval(speechTimer)
-  window.clearTimeout(speechHideTimer)
+  stopEyeReminderTimer()
   stopWalkFrameTimer()
   clearWalkTimers()
   if (studySwapTimer) {
@@ -467,7 +487,15 @@ onUnmounted(() => {
     @pointercancel="stopDrag"
   >
     <div
-      v-if="codexPreviewVisible"
+      v-if="eyeReminderActive"
+      class="speech-bubble"
+      role="status"
+      aria-live="polite"
+    >
+      {{ EYE_REMINDER_MESSAGE }}
+    </div>
+    <div
+      v-else-if="codexPreviewVisible"
       class="codex-preview-bubble"
       :class="[`is-codex-${codexStatus}`, { 'has-preview-lines': codexPreviewLines.length }]"
       role="status"
@@ -481,9 +509,6 @@ onUnmounted(() => {
       <ul v-if="codexPreviewLines.length" class="codex-preview-lines">
         <li v-for="line in codexPreviewLines" :key="line">{{ line }}</li>
       </ul>
-    </div>
-    <div v-else-if="speechText" class="speech-bubble" role="status" aria-live="polite">
-      {{ speechText }}
     </div>
     <img v-if="hasAsset" class="ram-image" :src="assetPath" alt="" draggable="false" @error="onAssetError" />
     <div v-if="!hasAsset" class="asset-placeholder">

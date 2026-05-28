@@ -53,6 +53,7 @@ function defaultConfig() {
     alwaysOnTop: true,
     visible: true,
     petSize: 'medium',
+    eyeReminderEnabled: true,
     position: {
       x: workArea.x + workArea.width - windowSize - 36,
       y: workArea.y + workArea.height - windowSize - 70,
@@ -423,6 +424,21 @@ function updateAlwaysOnTop(value) {
   writeConfig()
 }
 
+function publishReminderSettings() {
+  if (!isCodexMode()) return
+  sendPetAction({
+    type: 'reminder-settings',
+    eyeReminderEnabled: Boolean(config.eyeReminderEnabled),
+  })
+}
+
+function updateEyeReminderEnabled(value) {
+  config.eyeReminderEnabled = Boolean(value)
+  writeConfig()
+  publishReminderSettings()
+  refreshTrayMenu()
+}
+
 function showPetWindow() {
   if (!petWindow) return
   petWindow.setAlwaysOnTop(config.alwaysOnTop, 'floating')
@@ -523,6 +539,16 @@ function buildMenuTemplate() {
       checked: Boolean(config.alwaysOnTop),
       click: (item) => updateAlwaysOnTop(item.checked),
     },
+    ...(isCodexMode()
+      ? [
+          {
+            label: '护眼提醒（20 分钟）',
+            type: 'checkbox',
+            checked: Boolean(config.eyeReminderEnabled),
+            click: (item) => updateEyeReminderEnabled(item.checked),
+          },
+        ]
+      : []),
     { type: 'separator' },
     {
       label: '退出',
@@ -601,14 +627,18 @@ function createPetWindow() {
   petWindow.on('show', refreshTrayMenu)
   petWindow.on('hide', refreshTrayMenu)
 
+  const query = `desktop=1${isCodexMode() ? `&codex=1&reminder=${config.eyeReminderEnabled ? '1' : '0'}` : ''}`
   const url = isDev
-    ? 'http://127.0.0.1:5173/?desktop=1'
-    : `file://${path.join(__dirname, '../dist/index.html')}?desktop=1`
+    ? `http://127.0.0.1:5173/?${query}`
+    : `file://${path.join(__dirname, '../dist/index.html')}?${query}`
 
   petWindow.loadURL(url)
   petWindow.once('ready-to-show', () => {
     showPetWindow()
-    if (isCodexMode()) publishCodexState()
+    if (isCodexMode()) {
+      publishReminderSettings()
+      publishCodexState()
+    }
   })
 }
 

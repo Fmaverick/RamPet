@@ -9,8 +9,11 @@ Format: [Semantic Versioning](https://semver.org) · Dates in YYYY-MM-DD
 
 ### Added
 
+- Codex mode 新增 `护眼提醒（20 分钟）` 托盘开关；开启时每 20 分钟显示一次拉姆语气护眼气泡，8 秒后自动消失。
+
 ### Changed
 
+- 移除普通桌宠模式的 1 分钟随机关怀气泡，提醒能力收敛到 Codex mode 的极简护眼提醒。
 - GitHub Release 正文改为读取当前版本的 changelog 内容，避免只显示自动生成的 `Full Changelog` 链接。
 
 ### Fixed

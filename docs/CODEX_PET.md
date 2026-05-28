@@ -14,6 +14,14 @@ This starts Electron in production mode and points it at:
 .codex-pet/status.json
 ```
 
+Codex mode also enables a lightweight eye-rest reminder. Every 20 minutes, RamPet briefly shows:
+
+```text
+Bibo~ 主人，看看远处 20 秒吧，拉姆陪你。
+```
+
+The reminder bubble disappears automatically after 8 seconds. Use the tray menu item `护眼提醒（20 分钟）` to pause or resume it; the setting is saved locally.
+
 ## Update Status
 
 ```powershell

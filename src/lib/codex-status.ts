@@ -22,12 +22,18 @@ export type CodexStatusAction = {
   source?: string
 }
 
+export type ReminderSettingsAction = {
+  type: 'reminder-settings'
+  eyeReminderEnabled: boolean
+}
+
 export type PetAction =
   | {
       type: 'mood'
       mood: string
     }
   | CodexStatusAction
+  | ReminderSettingsAction
 
 export const CODEX_STATUS_LABELS: Record<CodexPetStatus, string> = {
   idle: '就绪',
